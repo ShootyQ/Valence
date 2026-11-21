@@ -26,6 +26,90 @@ export const levels = [
       {x: 562, y: 335, radius: 49, mu: 1815000, color: '#e49dbb'},
     ],
   },
+  {
+    name: 'South Pass',
+    start: {x: 165, y: 219},
+    target: {x: 730, y: 312, radius: 23},
+    bodies: [{x: 448, y: 267, radius: 82, mu: 4600000, color: '#f3b27c'}],
+  },
+  {
+    name: 'Return Arc',
+    start: {x: 730, y: 332},
+    target: {x: 171, y: 219, radius: 23},
+    bodies: [{x: 444, y: 264, radius: 74, mu: 4570000, color: '#8fceb8'}],
+  },
+  {
+    name: 'High Pass',
+    start: {x: 166, y: 237},
+    target: {x: 735, y: 176, radius: 21},
+    bodies: [
+      {x: 446, y: 211, radius: 70, mu: 3980000, color: '#b18cff'},
+      {x: 558, y: 390, radius: 45, mu: 1400000, color: '#efc17a'},
+    ],
+  },
+  {
+    name: 'Bottleneck',
+    start: {x: 169, y: 257},
+    target: {x: 725, y: 292, radius: 24},
+    bodies: [
+      {x: 450, y: 185, radius: 59, mu: 2310000, color: '#eda9c7'},
+      {x: 450, y: 331, radius: 58, mu: 2550000, color: '#8ca8ff'},
+    ],
+  },
+  {
+    name: 'Gravity Staircase',
+    start: {x: 161, y: 339},
+    target: {x: 729, y: 179, radius: 22},
+    bodies: [
+      {x: 357, y: 292, radius: 53, mu: 1920000, color: '#f5a67e'},
+      {x: 523, y: 230, radius: 57, mu: 2580000, color: '#a69bed'},
+    ],
+  },
+  {
+    name: 'Heavyweight',
+    start: {x: 154, y: 267},
+    target: {x: 749, y: 264, radius: 24},
+    bodies: [{x: 450, y: 259, radius: 87, mu: 6800000, color: '#ef9a8d'}],
+  },
+  {
+    name: 'Triple Transit',
+    start: {x: 151, y: 274},
+    target: {x: 762, y: 300, radius: 23},
+    bodies: [
+      {x: 331, y: 210, radius: 42, mu: 1560000, color: '#95acff'},
+      {x: 468, y: 332, radius: 49, mu: 2110000, color: '#f3adcc'},
+      {x: 607, y: 204, radius: 42, mu: 1400000, color: '#9edbc9'},
+    ],
+  },
+  {
+    name: 'Polar Drop',
+    start: {x: 432, y: 137},
+    target: {x: 463, y: 419, radius: 21},
+    bodies: [
+      {x: 443, y: 270, radius: 64, mu: 3510000, color: '#a9bafb'},
+      {x: 627, y: 301, radius: 43, mu: 1240000, color: '#eeb179'},
+    ],
+  },
+  {
+    name: 'Switchback',
+    start: {x: 723, y: 223},
+    target: {x: 175, y: 327, radius: 22},
+    bodies: [
+      {x: 565, y: 237, radius: 53, mu: 2130000, color: '#9ed6f3'},
+      {x: 410, y: 341, radius: 52, mu: 2280000, color: '#ca96f6'},
+      {x: 289, y: 197, radius: 40, mu: 1190000, color: '#f39688'},
+    ],
+  },
+  {
+    name: 'The Grand Tour',
+    start: {x: 149, y: 300},
+    target: {x: 763, y: 238, radius: 19},
+    bodies: [
+      {x: 318, y: 247, radius: 48, mu: 1780000, color: '#a4bbff'},
+      {x: 472, y: 327, radius: 60, mu: 3200000, color: '#f1ae7b'},
+      {x: 627, y: 217, radius: 50, mu: 2070000, color: '#c693ef'},
+    ],
+  },
 ];
 
 function acceleration(x, y, bodies) {
