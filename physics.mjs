@@ -9,21 +9,21 @@ export const levels = [
     name: 'Lunar Flyby',
     start: {x: 184, y: 285},
     target: {x: 726, y: 272, radius: 22},
-    bodies: [{x: 454, y: 282, radius: 68, mu: 2300000, color: '#ae91f3'}],
+    bodies: [{x: 454, y: 282, radius: 68, mu: 3795000, color: '#ae91f3'}],
   },
   {
     name: 'Low Orbit',
     start: {x: 174, y: 345},
     target: {x: 701, y: 188, radius: 20},
-    bodies: [{x: 454, y: 270, radius: 78, mu: 2950000, color: '#f69e84'}],
+    bodies: [{x: 454, y: 270, radius: 78, mu: 4867500, color: '#f69e84'}],
   },
   {
     name: 'Twin Moons',
     start: {x: 171, y: 270},
     target: {x: 740, y: 275, radius: 19},
     bodies: [
-      {x: 390, y: 218, radius: 59, mu: 1450000, color: '#98a9ff'},
-      {x: 562, y: 335, radius: 49, mu: 1100000, color: '#e49dbb'},
+      {x: 390, y: 218, radius: 59, mu: 2392500, color: '#98a9ff'},
+      {x: 562, y: 335, radius: 49, mu: 1815000, color: '#e49dbb'},
     ],
   },
 ];

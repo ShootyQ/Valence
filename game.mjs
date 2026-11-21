@@ -3,6 +3,8 @@ import { advance, height, launch, levels, maxPull, maxSpeed, step, width } from 
 const byId = id => document.getElementById(id);
 const canvas = byId('space');
 const ctx = canvas.getContext('2d');
+const portrait = matchMedia('(orientation: portrait) and (any-pointer: coarse)');
+const fullscreen = byId('fullscreen');
 const ink = '#ffdba2';
 const mint = '#9bf0d5';
 const outcomes = {
@@ -86,6 +88,11 @@ function fire() {
 
 function frame(timestamp) {
   if (state !== 'flying') return;
+  if (portrait.matches) {
+    previousTime = null;
+    animationFrame = requestAnimationFrame(frame);
+    return;
+  }
   if (previousTime !== null) accumulator += Math.min(.08, (timestamp - previousTime) / 1000);
   previousTime = timestamp;
   while (accumulator >= step) {
@@ -205,7 +212,7 @@ function canvasPoint(event) {
 }
 
 function canAim() {
-  return state !== 'flying' && state !== 'hit';
+  return !portrait.matches && state !== 'flying' && state !== 'hit';
 }
 
 function aimAt(point) {
@@ -234,7 +241,7 @@ canvas.addEventListener('pointerup', event => {
   if (event.pointerId !== drag) return;
   aimAt(canvasPoint(event));
   drag = null;
-  if (aim.speed >= 14) fire();
+  if (canAim() && aim.speed >= 14) fire();
   else ready();
 });
 canvas.addEventListener('lostpointercapture', event => {
@@ -265,5 +272,26 @@ byId('next').addEventListener('click', () => {
 byId('restart').addEventListener('click', () => {
   reset(levelIndex);
   canvas.focus();
+});
+fullscreen.hidden = !document.fullscreenEnabled || !document.documentElement.requestFullscreen;
+fullscreen.addEventListener('click', async () => {
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      return;
+    }
+    await document.documentElement.requestFullscreen();
+  } catch {
+    byId('status').textContent = 'Fullscreen is unavailable in this browser.';
+    return;
+  }
+  try {
+    await screen.orientation?.lock?.('landscape');
+  } catch {
+    // The rotate prompt remains available on devices without orientation locking.
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  fullscreen.textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
 });
 reset(0);
