@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101113">
+<title>Valence — Molecular Workbench</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./game.mjs"></script>
+</head>
+<body>
+<header class="top"><div class="brand"><span class="mark" aria-hidden="true">⌘</span> VALENCE</div><div class="modes" aria-label="Game mode"><button id="orders-mode" aria-pressed="true">Orders</button><button id="sandbox-mode" aria-pressed="false" disabled>Sandbox <span id="lock" aria-hidden="true">◇</span></button></div><button class="help" id="help" aria-label="How to play">?</button></header>
+<main>
+<section class="lab" aria-labelledby="bench-title">
+<div class="lab-head"><div><p class="eyebrow"><i></i> MOLECULAR LAB</p><h1 id="bench-title">Workbench</h1></div><div class="tools"><button id="undo" disabled>Undo</button><button id="clear">Clear</button></div></div>
+<div id="board" aria-label="Molecule assembly area">
+<div class="orbit orbit-1"></div><div class="orbit orbit-2"></div><div class="orbit orbit-3"></div><div class="cross"></div>
+<div class="board-caption"><span>+</span> ASSEMBLY FIELD</div>
+<div id="bonds"></div><div id="atoms"></div>
+<p id="empty" hidden>Add an atom to begin.</p>
+<div class="board-foot"><span>DRAG TO BOND</span><span>VAL / LAB</span></div>
+</div>
+<div class="tray"><div><p class="eyebrow">ATOM TRAY</p><div id="elements"></div></div><div><p class="eyebrow">BOND TYPE</p><div class="bond-tools"><button id="single" aria-pressed="true" aria-label="Single bond">—</button><button id="double" aria-pressed="false" aria-label="Double bond">═</button><button id="break" aria-pressed="false" aria-label="Break bond">×</button></div></div></div>
+</section>
+<aside class="sidebar" aria-label="Molecule orders">
+<div class="side-title"><h2>Orders</h2><span id="counter"></span></div>
+<div id="order"></div>
+<div class="queue"><p class="eyebrow">RECIPE LIST</p><ol id="recipes"></ol></div>
+</aside>
+<p id="status" role="status"></p>
+</main>
+<dialog id="guide"><form method="dialog"><button aria-label="Close instructions">×</button></form><h2>How to play</h2><p>Add atoms from the tray. Drag one near another, or select two atoms in succession, to create a bond.</p><p>Choose single or double before making a bond. You can update an existing bond the same way. Choose × and select two bonded atoms to break it.</p><p>Submit each order to unlock more elements. Finish all five to open the sandbox.</p></dialog>
+</body>
+</html>
