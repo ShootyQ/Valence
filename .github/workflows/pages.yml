@@ -1,4 +1,4 @@
-name: Deploy Valence to GitHub Pages
+name: Deploy Moonshot to GitHub Pages
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Stage game files
         run: |
           mkdir -p dist
-          cp index.html style.css game.mjs chemistry.mjs .nojekyll dist/
+          cp index.html style.css game.mjs physics.mjs .nojekyll dist/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

@@ -1,316 +1,269 @@
-import { elements, recipes, connects, matches, canBond } from './chemistry.mjs';
+import { advance, height, launch, levels, maxPull, maxSpeed, step, width } from './physics.mjs';
 
 const byId = id => document.getElementById(id);
-const board = byId('board');
-const atomLayer = byId('atoms');
-const bondLayer = byId('bonds');
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-const saveKey = 'valence-orders-v1';
-const positions = [[.32,.38],[.68,.62],[.70,.34],[.29,.67],[.49,.24]];
-let progress = 0;
-try {
-  const saved = Number(localStorage.getItem(saveKey));
-  if (Number.isInteger(saved)) progress = Math.max(0, Math.min(recipes.length, saved));
-} catch {}
-let mode = 'orders';
-let bondMode = 1;
-let atoms = [];
-let bonds = [];
-let history = [];
-let nextId = 0;
-let selected = null;
+const canvas = byId('space');
+const ctx = canvas.getContext('2d');
+const ink = '#ffdba2';
+const mint = '#9bf0d5';
+const outcomes = {
+  impact: 'The probe hit a moon. Aim farther around it.',
+  escaped: 'The probe drifted out of range. Try a different angle or power.',
+  timeout: 'The probe is still in orbit. Try a different launch.',
+};
+
+let levelIndex = 0;
+let level = levels[0];
+let shots = 0;
+let state = 'ready';
+let probe = null;
 let drag = null;
-let time = 0;
-const bondNodes = new Map();
+let aim = null;
+let trail = [];
+let preview = [];
+let previousTime = null;
+let animationFrame;
+let accumulator = 0;
+let ticks = 0;
 
-function announce(message) {
-  byId('status').textContent = message;
+function reset(index) {
+  levelIndex = index;
+  level = levels[index];
+  shots = 0;
+  byId('level-name').textContent = level.name;
+  byId('level-number').textContent = 'LEVEL ' + (index + 1) + ' / ' + levels.length;
+  byId('shots').textContent = 'SHOTS 0';
+  ready();
 }
 
-function makeAtom(symbol, x, y) {
-  return {id: ++nextId, symbol, x, y};
+function ready() {
+  cancelAnimationFrame(animationFrame);
+  state = 'ready';
+  probe = null;
+  drag = null;
+  trail = [];
+  byId('next').hidden = true;
+  byId('status').textContent = 'Pull back the probe and release.';
+  setAim(null);
+  render();
 }
 
-function seed() {
-  const recipe = recipes[progress];
-  atoms = recipe ? [recipe.center, ...Array(recipe.count).fill(recipe.outer)]
-    .map((symbol, index) => makeAtom(symbol, ...positions[index])) : [];
-  bonds = [];
-  history = [];
-  selected = null;
-  setBondMode(1);
-  sync();
-}
-
-function remember() {
-  history.push(structuredClone({atoms, bonds}));
-  if (history.length > 60) history.shift();
-}
-
-function setBondMode(value) {
-  bondMode = value;
-  ['break', 'single', 'double'].forEach((id, index) => {
-    byId(id).setAttribute('aria-pressed', index === value);
-  });
-}
-
-function sync() {
-  const live = new Set(atoms.map(atom => String(atom.id)));
-  for (const node of atomLayer.children) {
-    if (!live.has(node.dataset.atom)) node.hidden = true;
+function setAim(value) {
+  aim = value;
+  preview = [];
+  byId('power').textContent = '';
+  if (!value) return;
+  byId('power').textContent = 'POWER ' + Math.round(value.speed * 100 / maxSpeed) + '%';
+  if (value.speed < 14) return;
+  const projected = makeProbe(value);
+  for (let i = 0; i < 120; i++) {
+    const result = advance(projected, level);
+    if (i % 8 === 0) preview.push({x: projected.x, y: projected.y});
+    if (result) break;
   }
-  atomLayer.querySelectorAll('[hidden]').forEach(node => node.remove());
-  for (const atom of atoms) {
-    let node = byId('atom-' + atom.id);
-    if (!node) {
-      node = document.createElement('button');
-      node.type = 'button';
-      node.id = 'atom-' + atom.id;
-      node.className = 'atom';
-      node.dataset.atom = atom.id;
-      node.textContent = atom.symbol;
-      node.setAttribute('aria-label', elements[atom.symbol].name + ' atom ' + atom.id);
-      node.style.setProperty('--atom', elements[atom.symbol].color);
-      atomLayer.append(node);
-    }
-    node.classList.toggle('selected', atom.id === selected);
-    node.setAttribute('aria-pressed', atom.id === selected);
+}
+
+function makeProbe({angle, speed}) {
+  return launch(level.start, Math.cos(angle) * speed, Math.sin(angle) * speed);
+}
+
+function fire() {
+  if (state === 'flying' || state === 'hit' || !aim || aim.speed < 14) {
+    setAim(null);
+    render();
+    return;
   }
-  bondNodes.clear();
-  bondLayer.replaceChildren();
-  for (const bond of bonds) {
-    const node = document.createElement('div');
-    node.className = bond.order === 2 ? 'bond double' : 'bond';
-    bondLayer.append(node);
-    bondNodes.set(bond, node);
-  }
-  byId('undo').disabled = history.length === 0;
-  byId('clear').disabled = atoms.length === 0;
-  byId('empty').hidden = atoms.length > 0;
-  paint();
-}
-
-function drawSidebar() {
-  const unlocked = progress === recipes.length;
-  byId('sandbox-mode').disabled = !unlocked;
-  byId('lock').hidden = unlocked;
-  byId('orders-mode').setAttribute('aria-pressed', mode === 'orders');
-  byId('sandbox-mode').setAttribute('aria-pressed', mode === 'sandbox');
-  byId('counter').textContent = progress + ' / ' + recipes.length + ' FILLED';
-  byId('elements').replaceChildren(...Object.entries(elements).map(([symbol, element]) => {
-    const button = document.createElement('button');
-    button.className = 'element';
-    button.disabled = progress < element.unlock;
-    button.setAttribute('aria-label', button.disabled ? element.name + ' locked' : 'Add ' + element.name);
-    const swatch = document.createElement('span');
-    swatch.className = 'swatch';
-    swatch.style.setProperty('--atom', element.color);
-    swatch.textContent = symbol;
-    const label = document.createElement('small');
-    label.textContent = element.name;
-    button.append(swatch, label);
-    button.addEventListener('click', () => addAtom(symbol));
-    return button;
-  }));
-  const recipe = recipes[progress];
-  const order = byId('order');
-  if (mode === 'sandbox') {
-    order.innerHTML = '<div class="order-card"><p class="eyebrow">SANDBOX</p><h3>Free build</h3><p>Use the atom tray and bond controls to build your own molecules.</p></div>';
-  } else if (recipe) {
-    order.innerHTML = `<div class="order-card"><p class="eyebrow">CURRENT ORDER</p><p class="formula">${recipe.formula}</p><h3>${recipe.name}</h3><p>${recipe.hint}</p><button class="submit" id="submit">Submit molecule</button></div>`;
-    byId('submit').addEventListener('click', submit);
-  } else {
-    order.innerHTML = '<div class="order-card"><p class="eyebrow">ORDERS COMPLETE</p><h3>Sandbox unlocked</h3><p>All three elements are available for free building.</p><button class="submit" id="open-sandbox">Open sandbox</button></div>';
-    byId('open-sandbox').addEventListener('click', () => switchMode('sandbox'));
-  }
-  byId('recipes').replaceChildren(...recipes.map((item, index) => {
-    const row = document.createElement('li');
-    if (index === progress && mode === 'orders') row.setAttribute('aria-current', 'true');
-    row.innerHTML = `<strong>${item.formula}</strong><span>${item.name}</span><span>${index < progress ? 'Filled' : index === progress ? 'Active' : 'Queued'}</span>`;
-    return row;
-  }));
-}
-
-function addAtom(symbol) {
-  if (atoms.length >= 24) return announce('The workbench holds up to 24 atoms. Clear it or undo a move to make room.');
-  remember();
-  const spots = [...positions, ...Array.from({length: 24}, (_, i) => [
-    .12 + (i % 6) * .15, .17 + Math.floor(i / 6) * .22,
-  ])];
-  const [x, y] = spots.find(([x, y]) => atoms.every(atom => Math.hypot(atom.x - x, atom.y - y) > .095)) || [.5,.5];
-  atoms.push(makeAtom(symbol, x, y));
-  sync();
-  announce(elements[symbol].name + ' added.');
-}
-
-function bondAtoms(a, b, record = true) {
-  const previous = bonds.find(bond => connects(bond, a.id, b.id));
-  if (bondMode === 0) {
-    if (!previous) return announce('These atoms have no bond to break.');
-    if (record) remember();
-    bonds = bonds.filter(bond => bond !== previous);
-    return announce('Bond removed.');
-  }
-  if (previous?.order === bondMode) return announce('This bond is already in place.');
-  if (!canBond(a, b, bondMode, bonds)) return announce('That bond exceeds an atom’s valence. Try a lower bond order or break a bond.');
-  if (record) remember();
-  if (previous) previous.order = bondMode;
-  else bonds.push({a: a.id, b: b.id, order: bondMode});
-  announce(bondMode === 2 ? 'Double bond formed.' : 'Single bond formed.');
-}
-
-function selectAtom(atom) {
-  const first = atoms.find(item => item.id === selected);
-  selected = !first ? atom.id : null;
-  if (first && first !== atom) bondAtoms(first, atom);
-  if (selected) announce('Select a second atom.');
-  sync();
-}
-
-function submit() {
-  const recipe = recipes[progress];
-  if (!matches(recipe, atoms, bonds)) {
-    return announce('This assembly does not match ' + recipe.formula + '. ' + recipe.hint);
-  }
-  progress += 1;
-  try { localStorage.setItem(saveKey, String(progress)); } catch {}
-  const unlock = Object.values(elements).find(element => element.unlock === progress);
-  announce(recipe.name + ' order filled. ' + (unlock ? unlock.name + ' unlocked.' : progress === recipes.length ? 'Sandbox unlocked.' : ''));
-  seed();
-  drawSidebar();
-}
-
-function switchMode(next) {
-  if (next === mode || (next === 'sandbox' && progress < recipes.length)) return;
-  mode = next;
-  seed();
-  drawSidebar();
-  announce(next === 'sandbox' ? 'Sandbox open.' : 'Orders open.');
-}
-
-function point(atom) {
-  const linked = bonds.some(bond => bond.a === atom.id || bond.b === atom.id);
-  const drift = reducedMotion.matches || linked || drag?.atom === atom || selected === atom.id ? 0 : 8;
-  return [
-    atom.x * board.clientWidth + Math.sin(time / 1250 + atom.id * 2) * drift,
-    atom.y * board.clientHeight + Math.cos(time / 1550 + atom.id * 2) * drift,
-  ];
-}
-
-function paint() {
-  const points = new Map(atoms.map(atom => [atom.id, point(atom)]));
-  for (const [id, [x, y]] of points) {
-    const node = byId('atom-' + id);
-    node.style.left = x + 'px';
-    node.style.top = y + 'px';
-  }
-  for (const [bond, node] of bondNodes) {
-    const [x, y] = points.get(bond.a);
-    const [tx, ty] = points.get(bond.b);
-    node.style.left = x + 'px';
-    node.style.top = y - (bond.order === 2 ? 5.5 : 2.5) + 'px';
-    node.style.width = Math.hypot(tx - x, ty - y) + 'px';
-    node.style.transform = 'rotate(' + Math.atan2(ty - y, tx - x) + 'rad)';
-  }
+  probe = makeProbe(aim);
+  setAim(null);
+  state = 'flying';
+  trail = [level.start];
+  ticks = 0;
+  previousTime = null;
+  accumulator = 0;
+  byId('shots').textContent = 'SHOTS ' + (++shots);
+  byId('status').textContent = 'Probe in flight.';
+  animationFrame = requestAnimationFrame(frame);
 }
 
 function frame(timestamp) {
-  time = timestamp;
-  paint();
-  requestAnimationFrame(frame);
-}
-
-function atomFrom(target) {
-  return atoms.find(atom => atom.id === Number(target.closest('[data-atom]')?.dataset.atom));
-}
-
-atomLayer.addEventListener('click', event => {
-  if (event.detail !== 0) return;
-  const atom = atomFrom(event.target);
-  if (atom) selectAtom(atom);
-});
-
-atomLayer.addEventListener('pointerdown', event => {
-  if (drag || event.button !== 0) return;
-  const atom = atomFrom(event.target);
-  if (!atom) return;
-  const [x, y] = point(atom);
-  const rect = board.getBoundingClientRect();
-  drag = {atom, pointer: event.pointerId, startX: event.clientX, startY: event.clientY,
-    offsetX: event.clientX - rect.left - x, offsetY: event.clientY - rect.top - y, moved: false};
-  event.target.setPointerCapture(event.pointerId);
-});
-
-function moveAtom(atom, x, y) {
-  atom.x = Math.max(33, Math.min(board.clientWidth - 33, x)) / board.clientWidth;
-  atom.y = Math.max(33, Math.min(board.clientHeight - 33, y)) / board.clientHeight;
-}
-
-atomLayer.addEventListener('pointermove', event => {
-  if (!drag || drag.pointer !== event.pointerId) return;
-  if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
-  if (!drag.moved) {
-    remember();
-    drag.moved = true;
-    selected = null;
-  }
-  const rect = board.getBoundingClientRect();
-  moveAtom(drag.atom, event.clientX - rect.left - drag.offsetX, event.clientY - rect.top - drag.offsetY);
-});
-
-atomLayer.addEventListener('pointerup', event => {
-  if (!drag || drag.pointer !== event.pointerId) return;
-  const {atom, moved} = drag;
-  drag = null;
-  if (!moved) return selectAtom(atom);
-  const x = atom.x * board.clientWidth;
-  const y = atom.y * board.clientHeight;
-  let nearest = null;
-  let distance = 83;
-  for (const candidate of atoms) {
-    if (candidate === atom) continue;
-    const [tx, ty] = point(candidate);
-    const gap = Math.hypot(tx - x, ty - y);
-    if (gap < distance) {
-      nearest = {candidate, tx, ty};
-      distance = gap;
+  if (state !== 'flying') return;
+  if (previousTime !== null) accumulator += Math.min(.08, (timestamp - previousTime) / 1000);
+  previousTime = timestamp;
+  while (accumulator >= step) {
+    accumulator -= step;
+    const result = advance(probe, level);
+    if (++ticks % 5 === 0 || result) trail.push({x: probe.x, y: probe.y});
+    if (result) {
+      state = result;
+      if (result === 'hit') {
+        const last = levelIndex === levels.length - 1;
+        byId('status').textContent = last ? 'Target reached. All levels complete!' : 'Target reached!';
+        byId('next').textContent = last ? 'Play again' : 'Next level';
+        byId('next').hidden = false;
+      } else {
+        byId('status').textContent = outcomes[result];
+      }
+      break;
     }
   }
-  if (nearest) {
-    const {candidate, tx, ty} = nearest;
-    bondAtoms(atom, candidate, false);
-    const angle = distance > 8 ? Math.atan2(y - ty, x - tx) : x < board.clientWidth / 2 ? 0 : Math.PI;
-    moveAtom(atom, tx + 76 * Math.cos(angle), ty + 76 * Math.sin(angle));
+  render();
+  if (state === 'flying') animationFrame = requestAnimationFrame(frame);
+}
+
+const sky = document.createElement('canvas');
+sky.width = canvas.width;
+sky.height = canvas.height;
+const background = sky.getContext('2d');
+background.scale(2, 2);
+const nebula = background.createRadialGradient(456, 244, 0, 456, 244, 460);
+nebula.addColorStop(0, '#241633');
+nebula.addColorStop(1, '#0b0a16');
+background.fillStyle = nebula;
+background.fillRect(0, 0, width, height);
+for (let i = 0; i < 185; i++) {
+  const x = ((i * 631 + i * i * 17) % 899);
+  const y = ((i * 269 + i * i * 11) % 517);
+  background.fillStyle = i % 7 === 0 ? '#baa9dc9c' : '#baabd744';
+  background.fillRect(x, y, i % 7 === 0 ? 1.9 : 1.1, i % 7 === 0 ? 1.9 : 1.1);
+}
+ctx.scale(2, 2);
+
+function circle(x, y, radius, color, lineWidth = 0) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 2 * Math.PI);
+  if (lineWidth) {
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = color;
+    ctx.fill();
   }
-  sync();
-});
+}
 
-atomLayer.addEventListener('pointercancel', event => {
-  if (drag?.pointer !== event.pointerId) return;
-  if (drag.moved) ({atoms, bonds} = history.pop());
+function line(points, color, weight) {
+  if (points.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (const point of points.slice(1)) ctx.lineTo(point.x, point.y);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = weight;
+  ctx.stroke();
+}
+
+function label(text, x, y, color) {
+  ctx.fillStyle = color;
+  ctx.font = '600 13px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x, y);
+}
+
+function drawMoon({x, y, radius, color}) {
+  for (const size of [1.34, 1.69, 2.08]) circle(x, y, radius * size, '#c8a4ed24', 1);
+  const surface = ctx.createRadialGradient(x - radius * .40, y - radius * .46, 3, x, y, radius * 1.13);
+  surface.addColorStop(0, color);
+  surface.addColorStop(.63, '#67518a');
+  surface.addColorStop(1, '#2a203b');
+  circle(x, y, radius, surface);
+  for (const [dx, dy, size] of [[-.42,-.20,.20],[.17,.27,.26],[.38,-.38,.13],[-.51,.39,.10],[.65,.16,.085]]) {
+    circle(x + dx * radius, y + dy * radius, size * radius, '#24163338');
+    circle(x + dx * radius, y + dy * radius, size * radius, '#d4baec38', 1);
+  }
+  circle(x, y, radius, '#dfc3ff7a', 1.2);
+}
+
+function render() {
+  ctx.drawImage(sky, 0, 0, width, height);
+  for (const body of level.bodies) drawMoon(body);
+  const {x, y, radius} = level.target;
+  circle(x, y, radius + 10, '#9bf0d534', 1);
+  circle(x, y, radius, state === 'hit' ? '#9bf0d550' : '#143238');
+  circle(x, y, radius, mint, 2);
+  circle(x, y, 4, mint);
+  label('TARGET', x, y + radius + 29, mint);
+
+  const start = level.start;
+  circle(start.x, start.y, 22, '#ffdba260', 1.2);
+  circle(start.x, start.y, 30, '#ffdba225', 1);
+  label('PROBE', start.x, start.y + 50, ink);
+  line(trail, '#ffdba28e', 2);
+  for (const [i, point] of preview.entries()) circle(point.x, point.y, 2.65, i < 7 ? '#ffdba2b0' : '#ffdba255');
+  if (aim) {
+    const distance = aim.speed * maxPull / maxSpeed;
+    const end = {x: start.x - Math.cos(aim.angle) * distance, y: start.y - Math.sin(aim.angle) * distance};
+    line([start, end], '#ffdba2b0', 2);
+    circle(end.x, end.y, 4, '#ffdba2');
+  }
+  if (probe && canAim()) circle(start.x, start.y, 6, ink);
+  const position = probe || start;
+  circle(position.x, position.y, 11, '#ffdba24a');
+  circle(position.x, position.y, 6, ink);
+}
+
+function canvasPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {x: (event.clientX - rect.left) * width / rect.width, y: (event.clientY - rect.top) * height / rect.height};
+}
+
+function canAim() {
+  return state !== 'flying' && state !== 'hit';
+}
+
+function aimAt(point) {
+  const dx = level.start.x - point.x;
+  const dy = level.start.y - point.y;
+  setAim({angle: Math.atan2(dy, dx), speed: Math.min(maxPull, Math.hypot(dx, dy)) * maxSpeed / maxPull});
+  render();
+}
+
+canvas.addEventListener('pointerdown', event => {
+  if (event.button !== 0 || drag !== null || !canAim()) return;
+  const point = canvasPoint(event);
+  if (Math.hypot(point.x - level.start.x, point.y - level.start.y) > 48) return;
+  canvas.setPointerCapture(event.pointerId);
+  canvas.focus({preventScroll: true});
+  drag = event.pointerId;
+  probe = null;
+  trail = [];
+  byId('status').textContent = 'Release to launch.';
+  aimAt(level.start);
+});
+canvas.addEventListener('pointermove', event => {
+  if (event.pointerId === drag) aimAt(canvasPoint(event));
+});
+canvas.addEventListener('pointerup', event => {
+  if (event.pointerId !== drag) return;
+  aimAt(canvasPoint(event));
   drag = null;
-  sync();
+  if (aim.speed >= 14) fire();
+  else ready();
+});
+canvas.addEventListener('lostpointercapture', event => {
+  if (event.pointerId === drag) ready();
+});
+canvas.addEventListener('keydown', event => {
+  if (!canAim() || drag !== null) return;
+  if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)) return;
+  event.preventDefault();
+  if (!aim) setAim({angle: 0, speed: 280});
+  if (event.key === ' ') return fire();
+  const next = {...aim};
+  if (event.key === 'ArrowLeft') next.angle -= Math.PI / 90;
+  if (event.key === 'ArrowRight') next.angle += Math.PI / 90;
+  if (event.key === 'ArrowUp') next.speed = Math.min(maxSpeed, next.speed + 8);
+  if (event.key === 'ArrowDown') next.speed = Math.max(16, next.speed - 8);
+  probe = null;
+  trail = [];
+  setAim(next);
+  byId('status').textContent = 'Press Space to launch.';
+  render();
 });
 
-byId('undo').addEventListener('click', () => {
-  if (!history.length) return;
-  ({atoms, bonds} = history.pop());
-  selected = null;
-  sync();
-  announce('Last move undone.');
+byId('next').addEventListener('click', () => {
+  reset((levelIndex + 1) % levels.length);
+  canvas.focus();
 });
-byId('clear').addEventListener('click', () => {
-  remember();
-  atoms = [];
-  bonds = [];
-  selected = null;
-  sync();
-  announce('Workbench cleared.');
+byId('restart').addEventListener('click', () => {
+  reset(levelIndex);
+  canvas.focus();
 });
-['break', 'single', 'double'].forEach((id, index) => byId(id).addEventListener('click', () => setBondMode(index)));
-byId('orders-mode').addEventListener('click', () => switchMode('orders'));
-byId('sandbox-mode').addEventListener('click', () => switchMode('sandbox'));
-byId('help').addEventListener('click', () => byId('guide').showModal());
-seed();
-drawSidebar();
-requestAnimationFrame(frame);
+reset(0);
